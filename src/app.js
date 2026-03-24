@@ -9,6 +9,8 @@ const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 // --- 1. SEGURIDAD WEB (HELMET) ---
 app.use(helmet({
   crossOriginResourcePolicy: false,
