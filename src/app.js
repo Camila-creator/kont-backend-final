@@ -17,19 +17,18 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// 2. CONFIGURACIÓN DE CORS (PROTEGIDA)
+// --- 2. CONFIGURACIÓN DE CORS (ESTILO EXPRESS 5) ---
 const allowedOrigins = [
-  "http://127.0.0.1:5500",
+  "http://127.0.0.1:5500", 
   "http://localhost:5500",
   "http://localhost:3000"
 ];
 
-// Solo agregamos la URL si existe y es válida
 if (process.env.FRONTEND_URL) {
   allowedOrigins.push(process.env.FRONTEND_URL.trim());
 }
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -39,11 +38,21 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+  credentials: true,
+  optionsSuccessStatus: 200 // Vital para navegadores viejos y preflights
+};
 
-// En Express 5, para capturar todas las rutas se usa /(.*)
-app.options('/(.*)', cors());;
+// Aplicar CORS a TODO de forma global antes que cualquier ruta
+app.use(cors(corsOptions));
+
+// ESTO REEMPLAZA AL app.options('*') QUE DABA ERROR
+// Maneja el Preflight de forma manual y segura para Express 5
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // 3. MIDDLEWARES DE PARSEO
 app.use(express.json());
