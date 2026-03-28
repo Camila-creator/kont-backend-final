@@ -16,21 +16,22 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// --- 2. CONFIGURACIÓN DE CORS (CORREGIDO Y PRIORIZADO) ---
+// --- 2. CONFIGURACIÓN DE CORS ---
 const allowedOrigins = [
   "http://127.0.0.1:5500", 
   "http://localhost:5500",
   "http://localhost:3000"
 ];
 
-// Si existe la variable FRONTEND_URL en Render, la agregamos limpiamente
+// Protección para que el servidor no falle si la variable está vacía
 if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL.trim());
+  const cleanUrl = process.env.FRONTEND_URL.trim();
+  allowedOrigins.push(cleanUrl);
 }
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir si no hay origen (como apps o Postman) o si está en la lista
+    // Permitir si no hay origen (Postman) o si está en la lista
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -43,10 +44,10 @@ app.use(cors({
   credentials: true
 }));
 
-// Manejo de peticiones OPTIONS (Preflight) para el Login
+// Preflight para evitar el error de login
 app.options('*', cors());
 
-// --- 3. LIMITADOR DE VELOCIDAD (DESPUÉS DEL CORS) ---
+// --- 3. LIMITADOR DE VELOCIDAD ---
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 500, 
@@ -59,9 +60,7 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Aplicamos el limitador a las rutas de la API
 app.use("/api/", limiter);
-
 app.use(express.json());
 
 // --- 4. RUTAS ---
