@@ -17,39 +17,41 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// --- 2. CONFIGURACIÓN DE CORS (ESTILO EXPRESS 5) ---
-const allowedOrigins = [
-  "http://127.0.0.1:5500", 
-  "http://localhost:5500",
-  "http://localhost:3000"
-];
-
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL.trim());
-}
-
-const corsOptions = {
+/// --- 2. CONFIGURACIÓN DE CORS DINÁMICO ---
+app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Definimos qué dominios permitimos
+    const allowed = [
+      'https://kont-frontend-final.vercel.app',
+      'http://localhost:5500',
+      'http://127.0.0.1:5500'
+    ];
+    
+    // Si no hay origen (Postman) o está en la lista, permitimos
+    if (!origin || allowed.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Acceso denegado por política de CORS"));
+      console.error("CORS bloqueado para:", origin);
+      callback(new Error('No permitido por CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200 // Vital para navegadores viejos y preflights
-};
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// Aplicar CORS a TODO de forma global antes que cualquier ruta
-app.use(cors(corsOptions));
-
-// ESTO REEMPLAZA AL app.options('*') QUE DABA ERROR
-// Maneja el Preflight de forma manual y segura para Express 5
+// Manejo manual de Preflight (Esto es lo que te está bloqueando el Login)
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && origin.includes('vercel.app')) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+  
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.status(200).end();
   }
   next();
 });
