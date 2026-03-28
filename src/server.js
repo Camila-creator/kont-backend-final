@@ -9,3 +9,5 @@ app.listen(PORT, () => {
   🔌 Puerto: ${PORT}
   `);
 });
+
+module.exports = app;
