@@ -40,15 +40,20 @@ exports.getTenants = async (req, res) => {
 };
 
 exports.createTenant = async (req, res) => {
+  
   const client = await db.pool.connect(); 
   try {
     if (req.user.role !== "SUPER_ADMIN") return res.status(403).json({ error: "Acceso denegado." });
 
-    const { 
-        tenant_name, owner_name, owner_email, owner_password, 
-        plan_type, start_date, rif, address, phone, instagram, category_id,
-        plan_id 
-    } = req.body;
+    // Agrega esto al inicio de createTenant
+const { 
+    tenant_name, owner_name, owner_email, owner_password, 
+    plan_type, start_date, rif, address, phone, instagram, category_id,
+    plan_id 
+} = req.body;
+
+// Elimina cualquier intento de enviar un ID manualmente
+delete req.body.id;
 
     if (!tenant_name || !owner_name || !owner_email || !owner_password || !plan_type || !start_date || !category_id) {
       return res.status(400).json({ error: "Faltan datos obligatorios." });

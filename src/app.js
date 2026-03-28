@@ -16,7 +16,37 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// --- 2. LIMITADOR DE VELOCIDAD ---
+// --- 2. CONFIGURACIÓN DE CORS (CORREGIDO Y PRIORIZADO) ---
+const allowedOrigins = [
+  "http://127.0.0.1:5500", 
+  "http://localhost:5500",
+  "http://localhost:3000"
+];
+
+// Si existe la variable FRONTEND_URL en Render, la agregamos limpiamente
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL.trim());
+}
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Permitir si no hay origen (como apps o Postman) o si está en la lista
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`CORS bloqueado para: ${origin}`);
+      callback(new Error("Acceso denegado por política de CORS"));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// Manejo de peticiones OPTIONS (Preflight) para el Login
+app.options('*', cors());
+
+// --- 3. LIMITADOR DE VELOCIDAD (DESPUÉS DEL CORS) ---
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 500, 
@@ -29,27 +59,8 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Aplicamos el limitador a las rutas de la API
 app.use("/api/", limiter);
-
-// --- 3. CONFIGURACIÓN DE CORS (ADAPTADO PARA DESPLIEGUE) ---
-const allowedOrigins = [
-  "http://127.0.0.1:5500", 
-  "http://localhost:5500",
-  "http://localhost:3000", // Por si pruebas con React/Vue después
-  process.env.FRONTEND_URL // 👈 Aquí Render leerá tu URL de Netlify
-];
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // Permitir peticiones sin origen (como Postman) o si están en la lista
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Acceso denegado por política de CORS"));
-    }
-  },
-  credentials: true
-}));
 
 app.use(express.json());
 
