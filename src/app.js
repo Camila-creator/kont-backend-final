@@ -42,8 +42,8 @@ app.use(cors({
   credentials: true
 }));
 
-// Responder a las peticiones OPTIONS (vital para Login)
-app.options('*', cors());
+// En Express 5, para capturar todas las rutas se usa /(.*)
+app.options('/(.*)', cors());;
 
 // 3. MIDDLEWARES DE PARSEO
 app.use(express.json());
