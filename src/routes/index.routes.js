@@ -47,6 +47,8 @@ const cxcRoutes = require("./cxc.routes");
 
 const financeRoutes = require("./finance.routes");
 
+const cajaRoutes = require("./caja.routes");
+
 // marketing routes 
 const brandAssetsRoutes = require("./brand_assets.routes");
 const buyerPersonaRoutes = require("./buyer_persona.routes");
@@ -91,6 +93,7 @@ router.use("/customer-payments", customerPaymentsRoutes);
 router.use("/cxc", cxcRoutes);
 
 router.use("/finance", financeRoutes);
+router.use("/caja", cajaRoutes);
 
 //marketing routes 
 router.use("/brand-assets", brandAssetsRoutes);
