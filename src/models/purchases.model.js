@@ -1,5 +1,6 @@
 const db = require("../db");
 const audit = require("../controllers/audit.controller");
+const alertController = require("../controllers/alert.controller");
 
 /**
  * LISTAR COMPRAS (Añadido p.purchase_number)
@@ -63,7 +64,7 @@ async function getPurchaseItemsByPurchaseId(purchaseId, tenantId) {
 }
 
 /**
- * CREAR COMPRA (Generación automática de purchase_number)
+ * CREAR COMPRA (Con generación de purchase_number y ALERTAS)
  */
 async function createPurchaseWithItems(payload, user) {
   const { 
@@ -78,7 +79,6 @@ async function createPurchaseWithItems(payload, user) {
     await client.query("BEGIN");
     await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenant_id.toString()]);
 
-    // CAMBIO CLAVE: Se añade purchase_number con la subconsulta MAX()
     const ins = `
       INSERT INTO purchases (
         tenant_id, supplier_id, status, invoice_ref, notes, 
@@ -92,20 +92,14 @@ async function createPurchaseWithItems(payload, user) {
     `;
     
     const r1 = await client.query(ins, [
-      tenant_id,      // $1
-      supplier_id,    // $2
-      status,         // $3
-      invoice_ref,    // $4
-      notes,          // $5
-      purchase_date,  // $6
-      condition,      // $7
-      condition === "CREDITO" ? due_date : null, // $8
-      currency_code,  // $9
-      exchange_rate   // $10
+      tenant_id, supplier_id, status, invoice_ref, notes, 
+      purchase_date, condition, 
+      condition === "CREDITO" ? due_date : null, 
+      currency_code, exchange_rate
     ]);
     
     const purchaseId = r1.rows[0].id;
-    const purchaseNum = r1.rows[0].purchase_number; // Capturamos el nuevo número
+    const purchaseNum = r1.rows[0].purchase_number;
 
     if (items.length) {
       const insItem = `INSERT INTO purchase_items (purchase_id, product_id, supply_id, qty, unit_cost, total) VALUES ($1,$2,$3,$4,$5,$6)`;
@@ -114,6 +108,20 @@ async function createPurchaseWithItems(payload, user) {
         const cost = Number(it.unit_cost || 0);
         await client.query(insItem, [purchaseId, it.product_id || null, it.supply_id || null, qty, cost, it.total || (qty * cost)]);
       }
+    }
+
+    // =========================================================
+    // LÓGICA DE ALERTAS: Si la compra es a crédito, avisar del pago pendiente
+    // =========================================================
+    if (condition === "CREDITO") {
+        await alertController.createAlertInternal({
+            tenant_id,
+            tipo: 'PAGO_PROVEEDOR',
+            titulo: `📅 Pago Pendiente: Compra #${purchaseNum}`,
+            mensaje: `Se registró una compra a crédito por pagar. Vence el: ${due_date || 'Fecha no definida'}.`,
+            referencia_id: purchaseId,
+            prioridad: 'MEDIA'
+        });
     }
 
     await client.query("COMMIT");
@@ -135,7 +143,7 @@ async function createPurchaseWithItems(payload, user) {
 }
 
 /**
- * ACTUALIZAR CABECERA BÁSICA
+ * ACTUALIZAR CABECERA BÁSICA (Con soporte para alertas si cambia a crédito)
  */
 async function updatePurchaseBasic(id, patch, tenantId, user) {
   const q = `
@@ -155,31 +163,37 @@ async function updatePurchaseBasic(id, patch, tenantId, user) {
   `;
   
   const r = await db.query(q, [
-    id,                               // $1
-    tenantId,                         // $2
-    patch.supplier_id ?? null,        // $3
-    patch.status ?? null,             // $4
-    patch.invoice_ref ?? null,        // $5
-    patch.notes ?? null,              // $6
-    patch.purchase_date ?? null,      // $7
-    patch.condition ?? null,          // $8
-    patch.due_date ?? null,           // $9
-    patch.currency_code ?? null,      // $10
-    patch.exchange_rate ?? null       // $11
+    id, tenantId, patch.supplier_id ?? null, patch.status ?? null, 
+    patch.invoice_ref ?? null, patch.notes ?? null, patch.purchase_date ?? null, 
+    patch.condition ?? null, patch.due_date ?? null, patch.currency_code ?? null, 
+    patch.exchange_rate ?? null
   ], tenantId);
   
   const result = r.rows[0];
 
-  if (result && user) {
-    await audit.saveAuditLogInternal({
-      tenant_id: tenantId, user_id: user.id, user_name: user.name,
-      module: 'COMPRAS', action: 'UPDATE_PURCHASE',
-      description: `Actualizada cabecera de compra #${result.purchase_number || id}. Estado: ${result.status}`
-    });
+  if (result) {
+    // Si al actualizar, la condición cambió o se mantiene en CRÉDITO, renovamos/creamos la alerta
+    if (result.condition === "CREDITO") {
+        await alertController.createAlertInternal({
+            tenant_id: tenantId,
+            tipo: 'PAGO_PROVEEDOR',
+            titulo: `📅 Pago Pendiente: Compra #${result.purchase_number || id}`,
+            mensaje: `La compra está marcada como CRÉDITO. Vence el: ${result.due_date || 'Fecha no definida'}.`,
+            referencia_id: result.id,
+            prioridad: 'MEDIA'
+        });
+    }
+
+    if (user) {
+      await audit.saveAuditLogInternal({
+        tenant_id: tenantId, user_id: user.id, user_name: user.name,
+        module: 'COMPRAS', action: 'UPDATE_PURCHASE',
+        description: `Actualizada cabecera de compra #${result.purchase_number || id}. Estado: ${result.status}`
+      });
+    }
   }
   return result;
 }
-
 /**
  * REEMPLAZAR ITEMS DE COMPRA
  */

@@ -14,6 +14,9 @@ const auditRoutes = require("./audit.routes");
 // Ruta de facturacion 
 const invoicesRoutes = require("./invoices.routes");
 
+// 🔔 NUEVA RUTA: Sistema de Alertas y Notificaciones
+const alertRoutes = require("./alerts.routes");
+
 // Rutas de superadmin 
 
 const tenantsRoutes = require("./tenants.routes");
@@ -46,6 +49,9 @@ const customerPaymentsRoutes = require("./customer_payments.routes");
 const cxcRoutes = require("./cxc.routes");
 
 const financeRoutes = require("./finance.routes");
+
+// 🔔 MONTAJE DE ALERTAS
+router.use("/alerts", alertRoutes);
 
 const cajaRoutes = require("./caja.routes");
 

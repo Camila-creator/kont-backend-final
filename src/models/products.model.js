@@ -1,5 +1,6 @@
 const db = require("../db");
 const audit = require("../controllers/audit.controller");
+const alertController = require("../controllers/alert.controller");
 
 async function listProducts(tenantId) {
   // Traemos todo incluyendo product_number
@@ -79,16 +80,39 @@ async function updateProduct(id, p, tenantId, user) {
     p.buy_cost, p.retail_price, p.mayor_price, 
     p.stock, p.min_stock, p.has_expiry, p.expiry_date
   ];
+  
   const r = await db.query(q, values, tenantId);
   const result = r.rows[0];
 
-  if (result && user) {
+  // 1. Verificación de existencia (Seguridad técnica)
+  if (!result) return null;
+
+  // 2. Registro en auditoría
+  if (user) {
     await audit.saveAuditLogInternal({
-      tenant_id: tenantId, user_id: user.id, user_name: user.name,
-      module: 'INVENTARIO', action: 'UPDATE_PRODUCT',
+      tenant_id: tenantId, 
+      user_id: user.id, 
+      user_name: user.name,
+      module: 'INVENTARIO', 
+      action: 'UPDATE_PRODUCT',
       description: `Producto #${result.product_number || id} actualizado.`
     });
   }
+
+  // 3. Lógica de Alerta de Stock
+  // Solo disparamos si el stock es menor o igual al mínimo Y el stock es mayor a 0 
+  // (para no spamear alertas si ya está en cero y solo editaste el nombre, por ejemplo)
+  if (Number(result.stock) <= Number(result.min_stock)) {
+    await alertController.createAlertInternal({
+        tenant_id: tenantId,
+        tipo: 'STOCK_PRODUCTO',
+        titulo: '⚠️ Stock Crítico',
+        mensaje: `El producto "${result.name}" tiene unidades bajas (${result.stock} restantes).`,
+        referencia_id: result.id,
+        prioridad: 'ALTA'
+    });
+  }
+
   return result;
 }
 

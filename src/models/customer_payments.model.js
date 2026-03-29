@@ -1,6 +1,7 @@
 // backend/src/models/customer_payments.model.js
 const db = require("../db");
 const audit = require("../controllers/audit.controller");
+const alertController = require("../controllers/alert.controller");
 
 /**
  * Listar pagos con filtros por cliente o pedido.
@@ -103,7 +104,7 @@ async function createCustomerPayment(payload, user) {
         const resPago = await client.query(qPago, vPago);
         const nuevoPago = resPago.rows[0];
 
-        // 2. Si es EQUIPO_USADO, lo registramos en el limbo (received_phones)
+        // 2. Si es EQUIPO_USADO, lo registramos en el limbo (received_phones) y GENERAMOS ALERTA
         if (payload.method === "EQUIPO_USADO") {
             const qPhone = `
                 INSERT INTO received_phones (
@@ -116,20 +117,43 @@ async function createCustomerPayment(payload, user) {
                     created_at
                 )
                 VALUES ($1, $2, $3, $4, 'PENDIENTE', $5, NOW())
+                RETURNING id;
             `;
             
-            await client.query(qPhone, [
+            const resPhone = await client.query(qPhone, [
                 payload.tenant_id, 
                 payload.order_id, 
                 payload.phone_model || payload.notes, 
                 Number(payload.amount),
                 user ? user.id : null
             ]);
+
+            // --- DISPARADOR DE ALERTA PARA EQUIPO ---
+            await alertController.createAlertInternal({
+                tenant_id: payload.tenant_id,
+                tipo: 'EQUIPO_PENDIENTE',
+                titulo: '📱 Equipo por Procesar',
+                mensaje: `Se recibió: ${payload.phone_model || 'Equipo'} como parte de pago ($${payload.amount}).`,
+                referencia_id: resPhone.rows[0].id,
+                prioridad: 'ALTA'
+            });
+        }
+
+        // 3. Alerta de Pago Grande (Opcional: te avisa si entra un pago importante)
+        if (Number(payload.amount) >= 500) {
+            await alertController.createAlertInternal({
+                tenant_id: payload.tenant_id,
+                tipo: 'PAGO_CLIENTE',
+                titulo: '💰 Ingreso Importante',
+                mensaje: `Se registró un pago de $${payload.amount} del cliente ID ${payload.customer_id}.`,
+                referencia_id: nuevoPago.id,
+                prioridad: 'MEDIA'
+            });
         }
 
         await client.query("COMMIT");
 
-        // 3. Registro en auditoría
+        // 4. Registro en auditoría
         if (nuevoPago && user) {
             await audit.saveAuditLogInternal({
                 tenant_id: payload.tenant_id,
