@@ -10,60 +10,115 @@ exports.getResumenDiario = async (req, res) => {
             return res.status(400).json({ error: "Falta la fecha (date)" });
         }
 
-        // 1. Obtener la Tasa de Cambio más reciente (USD)
-        const qTasa = await pool.query(
-            `SELECT rate_value FROM exchange_rates 
-             WHERE tenant_id = $1 AND currency_code = 'USD' 
-             ORDER BY effective_date DESC LIMIT 1`,
-            [tenantId]
-        );
+        // Ejecutamos TODAS las consultas en paralelo para que sea ultra rápido
+        const [
+            qTasa, 
+            qIngresos, 
+            qEgresos, 
+            qMovimientos, 
+            qEstado, 
+            qMetodos, 
+            qCuentas, 
+            qProductos
+        ] = await Promise.all([
+            
+            // 1. Tasa de Cambio (USD)
+            pool.query(
+                `SELECT rate_value FROM exchange_rates 
+                 WHERE tenant_id = $1 AND currency_code = 'USD' 
+                 ORDER BY effective_date DESC LIMIT 1`,
+                [tenantId]
+            ),
+
+            // 2. Total Ingresos
+            pool.query(
+                `SELECT COALESCE(SUM(amount), 0) as total FROM customer_payments 
+                 WHERE paid_at::date = $1::date AND tenant_id = $2`,
+                [date, tenantId]
+            ),
+
+            // 3. Total Egresos
+            pool.query(
+                `SELECT COALESCE(SUM(amount), 0) as total FROM supplier_payments 
+                 WHERE created_at::date = $1::date AND tenant_id = $2`,
+                [date, tenantId]
+            ),
+
+            // 4. Historial Detallado (Ahora incluye el nombre de la cuenta)
+            pool.query(
+                `SELECT cp.paid_at as created_at, 'INGRESO' as tipo, 
+                        'Venta / Cliente' as descripcion, cp.method as metodo_pago, 
+                        cp.amount as monto, fa.name as cuenta 
+                 FROM customer_payments cp
+                 LEFT JOIN finance_accounts fa ON fa.id = cp.finance_account_id
+                 WHERE cp.paid_at::date = $1::date AND cp.tenant_id = $2
+                 
+                 UNION ALL
+                 
+                 SELECT sp.created_at, 'EGRESO' as tipo, 
+                        'Gasto / Proveedor' as descripcion, sp.method as metodo_pago, 
+                        sp.amount as monto, fa.name as cuenta 
+                 FROM supplier_payments sp
+                 LEFT JOIN finance_accounts fa ON fa.id = sp.finance_account_id
+                 WHERE sp.created_at::date = $1::date AND sp.tenant_id = $2
+                 
+                 ORDER BY created_at DESC`,
+                [date, tenantId]
+            ),
+
+            // 5. Estado de Cierre
+            pool.query(
+                `SELECT * FROM cash_register_closures WHERE closure_date = $1::date AND tenant_id = $2`,
+                [date, tenantId]
+            ),
+
+            // 6. TOTAL POR MÉTODO DE PAGO (Zelle, Efectivo, Pago Móvil...)
+            pool.query(
+                `SELECT method as metodo, COALESCE(SUM(amount), 0) as total 
+                 FROM customer_payments 
+                 WHERE paid_at::date = $1::date AND tenant_id = $2 
+                 GROUP BY method 
+                 ORDER BY total DESC`,
+                [date, tenantId]
+            ),
+
+            // 7. TOTAL POR CUENTA FINANCIERA (Banesco, Caja Fuerte, Chase...)
+            pool.query(
+                `SELECT fa.name as cuenta, fa.type as tipo, COALESCE(SUM(cp.amount), 0) as total 
+                 FROM customer_payments cp
+                 JOIN finance_accounts fa ON fa.id = cp.finance_account_id
+                 WHERE cp.paid_at::date = $1::date AND cp.tenant_id = $2
+                 GROUP BY fa.id, fa.name, fa.type
+                 ORDER BY total DESC`,
+                [date, tenantId]
+            ),
+
+            // 8. PRODUCTOS VENDIDOS EN EL DÍA (Ranking)
+            pool.query(
+                `SELECT p.name as producto, SUM(oi.qty) as cantidad_vendida, SUM(oi.total) as total_generado
+                 FROM order_items oi
+                 JOIN products p ON p.id = oi.product_id
+                 JOIN orders o ON o.id = oi.order_id
+                 WHERE o.order_date::date = $1::date AND o.tenant_id = $2
+                 GROUP BY p.id, p.name
+                 ORDER BY cantidad_vendida DESC`,
+                [date, tenantId]
+            )
+        ]);
+
         const tasaDelDia = parseFloat(qTasa.rows[0]?.rate_value || 0);
-
-        // 2. Calcular Ingresos (Ventas de ese día)
-        const qIngresos = await pool.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM customer_payments 
-             WHERE paid_at::date = $1::date AND tenant_id = $2`,
-            [date, tenantId]
-        );
-
-        // 3. Calcular Egresos (Gastos/Pagos de ese día)
-        const qEgresos = await pool.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM supplier_payments 
-             WHERE created_at::date = $1::date AND tenant_id = $2`,
-            [date, tenantId]
-        );
-
-        // 4. Obtener el historial de movimientos (UNION de pagos de clientes y proveedores)
-        const qMovimientos = await pool.query(
-            `
-            SELECT paid_at as created_at, 'INGRESO' as tipo, 'Venta / Pago de cliente' as descripcion, method as metodo_pago, amount as monto 
-            FROM customer_payments 
-            WHERE paid_at::date = $1::date AND tenant_id = $2
-            
-            UNION ALL
-            
-            SELECT created_at, 'EGRESO' as tipo, 'Pago a proveedor / Gasto' as descripcion, method as metodo_pago, amount as monto 
-            FROM supplier_payments 
-            WHERE created_at::date = $1::date AND tenant_id = $2
-            
-            ORDER BY created_at DESC
-            `,
-            [date, tenantId]
-        );
-
-        // 5. Verificar estado de la caja
-        const qEstado = await pool.query(
-            `SELECT * FROM cash_register_closures WHERE closure_date = $1::date AND tenant_id = $2`,
-            [date, tenantId]
-        );
 
         res.json({
             data: {
-                tasa: tasaDelDia, // Enviamos la tasa para el cálculo en el frontend
-                ingresos: parseFloat(qIngresos.rows[0].total),
-                egresos: parseFloat(qEgresos.rows[0].total),
+                tasa: tasaDelDia,
+                ingresos: parseFloat(qIngresos.rows[0]?.total || 0),
+                egresos: parseFloat(qEgresos.rows[0]?.total || 0),
                 estado: qEstado.rows.length > 0 ? 'CERRADA' : 'ABIERTA',
-                movimientos: qMovimientos.rows
+                movimientos: qMovimientos.rows,
+                // AQUÍ VAN TUS NUEVOS DATOS MAGISTRALES:
+                desgloseMetodos: qMetodos.rows, 
+                desgloseCuentas: qCuentas.rows,
+                productosVendidos: qProductos.rows
             }
         });
 
@@ -80,7 +135,7 @@ exports.cerrarCaja = async (req, res) => {
         const tenantId = req.user.tenantId;
         const userId = req.user.userId; 
 
-        // 1. Validar si ya está cerrada para evitar duplicados
+        // 1. Validar si ya está cerrada
         const checkCierre = await pool.query(
             `SELECT id FROM cash_register_closures WHERE closure_date = $1::date AND tenant_id = $2`,
             [fecha, tenantId]
@@ -92,8 +147,7 @@ exports.cerrarCaja = async (req, res) => {
 
         const diferencia = Number(saldo_real) - Number(saldo_esperado);
 
-        // 2. Insertar el cierre con el snapshot de la diferencia
-        // Nota: Si en tu tabla agregaste la columna 'exchange_rate', podrías guardarla aquí también.
+        // 2. Insertar el cierre
         await pool.query(
             `INSERT INTO cash_register_closures 
             (tenant_id, closed_by, closure_date, expected_amount, actual_amount, difference, notes) 
