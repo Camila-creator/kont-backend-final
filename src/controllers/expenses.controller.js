@@ -1,6 +1,6 @@
 const { pool } = require("../db");
+const audit = require("./audit.controller"); // <--- Importado
 
-// GET /api/expenses - Sin cambios significativos, solo asegúrate de traer los nuevos campos
 exports.getExpenses = async (req, res) => {
     try {
         const tenantId = req.user.tenantId;
@@ -33,23 +33,16 @@ exports.getExpenses = async (req, res) => {
     }
 };
 
-// POST /api/expenses - AQUÍ EL CAMBIO PARA LAS TASAS
 exports.createExpense = async (req, res) => {
     try {
         const tenantId = req.user.tenantId;
         const userId = req.user.userId;
+        const userName = req.user.name || "Usuario Kont"; // Para el log
 
         const { 
-            category, 
-            description, 
-            amount, 
-            date, 
-            method, 
-            supplier_id, 
-            finance_account_id, 
-            place,
-            currency,        // <--- RECIBIDO DEL JS
-            exchange_rate    // <--- RECIBIDO DEL JS
+            category, description, amount, date, method, 
+            supplier_id, finance_account_id, place,
+            currency, exchange_rate 
         } = req.body;
 
         const query = `
@@ -64,25 +57,31 @@ exports.createExpense = async (req, res) => {
         `;
 
         const values = [
-            tenantId, 
-            category, 
-            description, 
-            amount, 
-            date, 
-            method, 
-            supplier_id || null, 
-            finance_account_id || null, 
-            place || null, 
-            userId,
-            currency || 'USD',           // Valor por defecto USD
-            exchange_rate || 1.0         // Valor por defecto 1.0
+            tenantId, category, description, amount, date, method, 
+            supplier_id || null, finance_account_id || null, place || null, 
+            userId, currency || 'USD', exchange_rate || 1.0
         ];
 
         const result = await pool.query(query, values);
+        const nuevoGasto = result.rows[0];
+
+        // ==========================================
+        // AUDITORÍA: Registro de nuevo egreso
+        // ==========================================
+        if (nuevoGasto) {
+            await audit.saveAuditLogInternal({
+                tenant_id: tenantId,
+                user_id: userId,
+                user_name: userName,
+                module: 'FINANZAS_GASTOS',
+                action: 'CREATE_EXPENSE',
+                description: `Gasto registrado: ${category} - ${description} por $${amount} (${currency})`
+            });
+        }
 
         res.status(201).json({ 
             message: "Egreso registrado correctamente",
-            data: result.rows[0] 
+            data: nuevoGasto 
         });
 
     } catch (error) {
@@ -91,11 +90,12 @@ exports.createExpense = async (req, res) => {
     }
 };
 
-// DELETE /api/expenses/:id - Se mantiene igual
 exports.deleteExpense = async (req, res) => {
     try {
         const { id } = req.params;
         const tenantId = req.user.tenantId;
+        const userId = req.user.userId;
+        const userName = req.user.name || "Usuario Kont";
 
         const result = await pool.query(
             "DELETE FROM expenses WHERE id = $1 AND tenant_id = $2 RETURNING *",
@@ -105,6 +105,20 @@ exports.deleteExpense = async (req, res) => {
         if (result.rowCount === 0) {
             return res.status(404).json({ error: "Gasto no encontrado" });
         }
+
+        const eliminado = result.rows[0];
+
+        // ==========================================
+        // AUDITORÍA: Registro de eliminación
+        // ==========================================
+        await audit.saveAuditLogInternal({
+            tenant_id: tenantId,
+            user_id: userId,
+            user_name: userName,
+            module: 'FINANZAS_GASTOS',
+            action: 'DELETE_EXPENSE',
+            description: `Se eliminó el gasto ID ${id}: ${eliminado.description} de $${eliminado.amount}`
+        });
 
         res.json({ message: "Gasto eliminado exitosamente" });
     } catch (error) {

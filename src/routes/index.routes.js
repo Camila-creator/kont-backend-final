@@ -17,6 +17,9 @@ const invoicesRoutes = require("./invoices.routes");
 // 🔔 NUEVA RUTA: Sistema de Alertas y Notificaciones
 const alertRoutes = require("./alerts.routes");
 
+// Rutas de kont intelligence
+const intelligenceRoutes = require("./routes/intelligence.routes");
+
 // Rutas de superadmin 
 
 const tenantsRoutes = require("./tenants.routes");
@@ -147,5 +150,9 @@ router.use("/sa-dashboard", saDashboardRoutes);
 // RUTAS DE SERIALES (IMEIS) 
 router.use("/serials", serialRoutes);
 router.use("/received-phones", receivedPhonesRoutes);
+
+// RUTAS DE KONT INTELLIGENCE
+
+app.use("/api/intelligence", intelligenceRoutes);
 
 module.exports = router;
