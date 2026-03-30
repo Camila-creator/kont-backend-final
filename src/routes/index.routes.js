@@ -52,6 +52,8 @@ const financeRoutes = require("./finance.routes");
 
 // 🔔 MONTAJE DE ALERTAS
 router.use("/alerts", alertRoutes);
+// Ruta de Egresos (Gastos Fijos y Esporádicos)
+const expensesRoutes = require("./expenses.routes");
 
 const cajaRoutes = require("./caja.routes");
 
@@ -116,6 +118,7 @@ router.use("/mkt-results", resultsRoutes);
 router.use("/dashboard-main", dashboardMainRoutes);
 router.use("/exchange", exchangeRoutes);
 
+
 // RUTA DE AUTENTICACION (LOGIN)
 router.use("/auth", authRoutes);
 
@@ -127,6 +130,9 @@ router.use("/audit", auditRoutes);
 
 // RUTA DE FACTURACION
 router.use("/invoices", invoicesRoutes);
+
+// RUTA DE EGRESOS (GASTOS)
+router.use("/expenses", expensesRoutes);
 
 // RUTAS DE SUPER ADMIN 
 
