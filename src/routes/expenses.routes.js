@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const ctrl = require("../controllers/expenses_controller"); // El que creamos antes
+const ctrl = require("../controllers/expenses.controller"); // El que creamos antes
 const { verifyToken } = require("../middlewares/auth.middleware"); // 👮‍♂️ El Guardia
 
 // Rutas de Gestión de Egresos
