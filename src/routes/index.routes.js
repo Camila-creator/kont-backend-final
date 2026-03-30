@@ -18,7 +18,7 @@ const invoicesRoutes = require("./invoices.routes");
 const alertRoutes = require("./alerts.routes");
 
 // Rutas de kont intelligence
-const intelligenceRoutes = require("./routes/intelligence.routes");
+const intelligenceRoutes = require("./intelligence.routes");
 
 // Rutas de superadmin 
 
