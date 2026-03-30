@@ -152,7 +152,6 @@ router.use("/serials", serialRoutes);
 router.use("/received-phones", receivedPhonesRoutes);
 
 // RUTAS DE KONT INTELLIGENCE
-
-app.use("/api/intelligence", intelligenceRoutes);
+router.use("/intelligence", intelligenceRoutes);
 
 module.exports = router;
