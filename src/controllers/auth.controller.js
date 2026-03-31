@@ -52,16 +52,16 @@ exports.login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      {
-        userId: user.id,
-        tenantId: user.tenant_id,
-        role: user.role,
-        name: user.name,
-        categoryId: user.category_id || 1,
-      },
-      secret,
-      { expiresIn: "24h" }
-    );
+  {
+    id: user.id,          // Cambia userId por id para ser consistente
+    tenantId: user.tenant_id,
+    role: user.role,      // <--- ESTE ES EL REY
+    name: user.name,
+    categoryId: user.category_id || 1,
+  },
+  secret,
+  { expiresIn: "24h" }
+);
 
     // 6. RESPUESTA
     return res.json({

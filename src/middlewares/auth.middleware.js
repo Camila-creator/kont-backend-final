@@ -33,10 +33,11 @@ exports.verifyToken = (req, res, next) => {
     // 🚀 INYECCIÓN DE USUARIO
     // Guardamos los datos para que el siguiente middleware (checkModuleAccess) los use
     req.user = {
-      ...decoded,
-      tenantId: finalTenantId,
-      tenant_id: finalTenantId
-    }; 
+  ...decoded,
+  id: decoded.id || decoded.userId, // Normalizamos el ID
+  role: decoded.role,               // 🚨 ¡ASEGÚRATE DE QUE ESTO ESTÉ AQUÍ!
+  tenantId: decoded.tenantId || decoded.tenant_id
+};
     
     next();
   } catch (err) {
