@@ -26,6 +26,7 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
 
 // Siempre incluimos localhost para desarrollo
 const DEV_ORIGINS = [
+  "https://kont-frontend-final.vercel.app",
   "http://localhost:5500",
   "http://127.0.0.1:5500",
   "http://localhost:3000",
