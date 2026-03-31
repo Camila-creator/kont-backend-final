@@ -1,6 +1,11 @@
-// backend/middlewares/auth.middleware.js
+// backend/src/middlewares/auth.middleware.js
 const jwt = require("jsonwebtoken");
+const { MODULE_ACCESS } = require("../constants/roles");
 
+/**
+ * 🛡️ VERIFICADOR DE TOKEN
+ * Valida que el usuario esté logueado y extrae su información.
+ */
 exports.verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -11,23 +16,22 @@ exports.verifyToken = (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    // Si JWT_SECRET no existe, el sistema debe dar error, no inventarse una clave
-const secret = process.env.JWT_SECRET;
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error("CRÍTICO: La variable JWT_SECRET no está definida en el entorno.");
+    }
 
-if (!secret) {
-    throw new Error("CRÍTICO: La variable JWT_SECRET no está definida en el entorno.");
-}
     const decoded = jwt.verify(token, secret);
     
-    // 🛡️ NORMALIZACIÓN: Buscamos el ID en cualquier formato que venga
+    // 🛡️ NORMALIZACIÓN DE TENANT
     const finalTenantId = decoded.tenantId || decoded.tenant_id;
 
     if (!finalTenantId) {
       return res.status(403).json({ error: "Token inválido: Falta identificador de empresa (Tenant)" });
     }
 
-    // 🚀 LA MAGIA: Inyectamos ambos formatos en req.user
-    // Así, si un controlador busca .tenantId o .tenant_id, AMBOS funcionarán.
+    // 🚀 INYECCIÓN DE USUARIO
+    // Guardamos los datos para que el siguiente middleware (checkModuleAccess) los use
     req.user = {
       ...decoded,
       tenantId: finalTenantId,
@@ -41,4 +45,37 @@ if (!secret) {
     }
     return res.status(401).json({ error: "Token inválido" });
   }
+};
+
+/**
+ * 🔐 GUARDIÁN DE MÓDULOS (RBAC)
+ * Compara el rol del usuario con la "Fuente de Verdad" en constants/roles.js
+ * Uso: checkModuleAccess('marketing'), checkModuleAccess('finance'), etc.
+ */
+exports.checkModuleAccess = (moduleName) => {
+  return (req, res, next) => {
+    const user = req.user; // Viene de verifyToken
+    const allowedRoles = MODULE_ACCESS[moduleName];
+
+    // 1. Verificar si el rol tiene permiso según roles.js
+    if (!allowedRoles || !allowedRoles.includes(user.role)) {
+      return res.status(403).json({ 
+        ok: false,
+        error: "ACCESO_DENEGADO", 
+        message: `Tu rol (${user.role}) no tiene permiso para acceder al módulo: ${moduleName}` 
+      });
+    }
+
+    // 2. Regla especial de seguridad para Marketing (Solo si está activo)
+    if (user.role === 'MARKETING' && user.is_active === false) {
+      return res.status(403).json({ 
+        ok: false,
+        error: "USUARIO_INACTIVO", 
+        message: "Tu acceso al módulo de Marketing está pausado." 
+      });
+    }
+
+    // 3. Si todo está bien, adelante
+    next();
+  };
 };

@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const ctrl = require("../controllers/supplier_payments.controller");
-const { verifyToken } = require("../middlewares/auth.middleware"); // 👮‍♂️ El Guardia
+const { verifyToken,checkModuleAccess } = require("../middlewares/auth.middleware"); // 👮‍♂️ El Guardia
 
-router.get("/",verifyToken, ctrl.list);
-router.post("/", verifyToken, ctrl.create);
+router.get("/",verifyToken,checkModuleAccess("supplier_payments"), ctrl.list);
+router.post("/", verifyToken, checkModuleAccess("supplier_payments"), ctrl.create);
 
 module.exports = router;

@@ -12,52 +12,44 @@ exports.login = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    console.log("--- INTENTO DE LOGIN (MODO RECOBRO) ---");
-    console.log("Email recibido:", cleanEmail);
 
-    // 1. BUSQUEDA PURA
-    const userOnly = await pool.query(
-      `SELECT * FROM users WHERE LOWER(TRIM(email)) = $1`,
+    // 1. BUSCAR USUARIO — usamos pool directo (sin RLS) para que el login siempre funcione
+    const userResult = await pool.query(
+      `SELECT u.*, t.category_id, t.is_active AS tenant_active
+       FROM users u
+       JOIN tenants t ON t.id = u.tenant_id
+       WHERE LOWER(TRIM(u.email)) = $1`,
       [cleanEmail]
     );
 
-    console.log("¿Usuario encontrado en tabla users?:", userOnly.rows.length > 0);
-
-    if (userOnly.rows.length === 0) {
-      console.log("❌ ERROR: El email no existe en la base de datos.");
+    if (userResult.rows.length === 0) {
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
-    const user = userOnly.rows[0];
-    console.log("Rol detectado:", user.role);
-    console.log("ID de Empresa (tenant_id) en usuario:", user.tenant_id);
+    const user = userResult.rows[0];
 
-    // 2. VERIFICACIÓN DEL TENANT
-    const tenantResult = await pool.query(
-      `SELECT * FROM tenants WHERE id = $1`,
-      [user.tenant_id]
-    );
-
-    console.log("¿Existe la empresa en tabla tenants?:", tenantResult.rows.length > 0);
-    
-    // 3. VALIDACIÓN DE CONTRASEÑA (MODIFICADA: BYPASS PARA CAMILA)
-    let isValid = false;
-
-    // Si eres tú, forzamos el éxito sin importar bcrypt
-    if (cleanEmail === 'admin_camila@gmail.com') {
-        console.log("🚀 IDENTIDAD VERIFICADA: Acceso concedido por Hardcode a la Jefa");
-        isValid = true;
-    } else {
-        isValid = await bcrypt.compare(password, user.password_hash);
-        console.log("¿Contraseña coincide con Bcrypt?:", isValid);
+    // 2. VERIFICAR QUE LA EMPRESA ESTÉ ACTIVA
+    if (!user.tenant_active) {
+      return res.status(403).json({ error: "Tu empresa no está activa. Contacta a soporte." });
     }
 
+    // 3. VERIFICAR QUE EL USUARIO ESTÉ ACTIVO
+    if (!user.is_active) {
+      return res.status(403).json({ error: "Tu usuario está desactivado. Contacta al administrador." });
+    }
+
+    // 4. VALIDAR CONTRASEÑA con bcrypt — sin excepciones ni bypass
+    const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
-    // 4. GENERAR TOKEN
-    const categoryId = tenantResult.rows[0]?.category_id || 1;
+    // 5. GENERAR TOKEN — JWT_SECRET debe existir en .env, sin fallback inseguro
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.error("CRÍTICO: JWT_SECRET no está definido en las variables de entorno.");
+      return res.status(500).json({ error: "Error de configuración del servidor." });
+    }
 
     const token = jwt.sign(
       {
@@ -65,16 +57,14 @@ exports.login = async (req, res) => {
         tenantId: user.tenant_id,
         role: user.role,
         name: user.name,
-        categoryId: categoryId
+        categoryId: user.category_id || 1,
       },
-      process.env.JWT_SECRET || "secreto_super_seguro_agromedic_2026",
-      { expiresIn: "12h" }
+      secret,
+      { expiresIn: "24h" }
     );
 
-    console.log("✅ LOGIN EXITOSO para:", user.name);
-
-    // 5. RESPUESTA
-    res.json({
+    // 6. RESPUESTA
+    return res.json({
       message: "Login exitoso",
       token,
       user: {
@@ -83,12 +73,12 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role,
         tenant_id: user.tenant_id,
-        tenant_category_id: categoryId
-      }
+        tenant_category_id: user.category_id || 1,
+      },
     });
 
   } catch (error) {
-    console.error("❌ ERROR CRÍTICO EN LOGIN:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
+    console.error("Error en login:", error.message);
+    return res.status(500).json({ error: "Error interno del servidor" });
   }
 };
