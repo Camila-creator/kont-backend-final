@@ -1,6 +1,6 @@
 // backend/src/middlewares/auth.middleware.js
 const jwt = require("jsonwebtoken");
-const { MODULE_ACCESS } = require("../constants/roles");
+const { MODULE_ACCESS } = require("../../constants/roles");
 
 /**
  * 🛡️ VERIFICADOR DE TOKEN
