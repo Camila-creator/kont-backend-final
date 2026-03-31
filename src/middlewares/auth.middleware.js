@@ -3,8 +3,7 @@ const jwt = require("jsonwebtoken");
 const { MODULE_ACCESS } = require("../../constants/roles");
 
 /**
- * 🛡️ VERIFICADOR DE TOKEN
- * Valida que el usuario esté logueado y extrae su información.
+ * verifyToken — Valida el JWT y popula req.user
  */
 exports.verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -18,65 +17,75 @@ exports.verifyToken = (req, res, next) => {
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      throw new Error("CRÍTICO: La variable JWT_SECRET no está definida en el entorno.");
+      throw new Error("CRÍTICO: JWT_SECRET no definido.");
     }
 
     const decoded = jwt.verify(token, secret);
-    
-    // 🛡️ NORMALIZACIÓN DE TENANT
-    const finalTenantId = decoded.tenantId || decoded.tenant_id;
 
-    if (!finalTenantId) {
-      return res.status(403).json({ error: "Token inválido: Falta identificador de empresa (Tenant)" });
+    // Normalizar IDs — el token puede traer 'id' o 'userId' según cuándo fue generado
+    const userId   = decoded.id || decoded.userId;
+    const tenantId = decoded.tenantId || decoded.tenant_id;
+
+    if (!tenantId) {
+      return res.status(403).json({ error: "Token inválido: falta tenant." });
     }
 
-    // 🚀 INYECCIÓN DE USUARIO
-    // Guardamos los datos para que el siguiente middleware (checkModuleAccess) los use
     req.user = {
-  ...decoded,
-  id: decoded.id || decoded.userId, // Normalizamos el ID
-  role: decoded.role,               // 🚨 ¡ASEGÚRATE DE QUE ESTO ESTÉ AQUÍ!
-  tenantId: decoded.tenantId || decoded.tenant_id
-};
-    
+      ...decoded,
+      id:         userId,
+      userId:     userId,
+      tenantId:   tenantId,
+      tenant_id:  tenantId,
+      role:       decoded.role,
+    };
+
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
-      return res.status(401).json({ error: "Su sesión ha expirado. Inicie sesión nuevamente." });
+      return res.status(401).json({ error: "Sesión expirada. Inicia sesión de nuevo." });
     }
-    return res.status(401).json({ error: "Token inválido" });
+    return res.status(401).json({ error: "Token inválido." });
   }
 };
 
 /**
- * 🔐 GUARDIÁN DE MÓDULOS (RBAC)
- * Compara el rol del usuario con la "Fuente de Verdad" en constants/roles.js
- * Uso: checkModuleAccess('marketing'), checkModuleAccess('finance'), etc.
+ * checkModuleAccess(moduleName) — RBAC basado en constants/roles.js
+ * SUPER_ADMIN siempre pasa. Si el módulo no existe en el mapa, también pasa
+ * (fail-open para no bloquear rutas que aún no están mapeadas).
  */
 exports.checkModuleAccess = (moduleName) => {
   return (req, res, next) => {
-    const user = req.user; // Viene de verifyToken
+    const { role } = req.user;
+
+    // SUPER_ADMIN tiene acceso total — nunca lo bloqueamos
+    if (role === "SUPER_ADMIN") return next();
+
     const allowedRoles = MODULE_ACCESS[moduleName];
 
-    // 1. Verificar si el rol tiene permiso según roles.js
-    if (!allowedRoles || !allowedRoles.includes(user.role)) {
-      return res.status(403).json({ 
+    // Si el módulo no está en el mapa, lo dejamos pasar con advertencia
+    // (así no bloqueamos rutas que olvidamos mapear)
+    if (!allowedRoles) {
+      console.warn(`[RBAC] Módulo no mapeado: "${moduleName}". Acceso permitido por defecto.`);
+      return next();
+    }
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({
         ok: false,
-        error: "ACCESO_DENEGADO", 
-        message: `Tu rol (${user.role}) no tiene permiso para acceder al módulo: ${moduleName}` 
+        error: "ACCESO_DENEGADO",
+        message: `Tu rol (${role}) no tiene permiso para: ${moduleName}`,
       });
     }
 
-    // 2. Regla especial de seguridad para Marketing (Solo si está activo)
-    if (user.role === 'MARKETING' && user.is_active === false) {
-      return res.status(403).json({ 
+    // Regla especial: MARKETING inactivo no pasa
+    if (role === "MARKETING" && req.user.is_active === false) {
+      return res.status(403).json({
         ok: false,
-        error: "USUARIO_INACTIVO", 
-        message: "Tu acceso al módulo de Marketing está pausado." 
+        error: "USUARIO_INACTIVO",
+        message: "Tu acceso al módulo de Marketing está pausado.",
       });
     }
 
-    // 3. Si todo está bien, adelante
     next();
   };
 };
