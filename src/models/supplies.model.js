@@ -1,5 +1,6 @@
 const db = require("../db");
 const audit = require("../controllers/audit.controller");
+const alertController = require("../controllers/alert.controller");
 
 /**
  * LISTAR: Con JOIN a categorías y ordenado por el número correlativo
@@ -104,7 +105,7 @@ async function createSupply(data, tenantId, user) {
 }
 
 /**
- * ACTUALIZAR: Mantiene el supply_number intacto
+ * ACTUALIZAR INSUMO: Mantiene el supply_number intacto e incluye lógica de alertas
  */
 async function updateSupply(id, data, tenantId, user) {
   const { nombre, categoria_id, unidad, proveedor_id, costo, stock, min_stock, has_expiry, expiry_date } = data;
@@ -128,19 +129,43 @@ async function updateSupply(id, data, tenantId, user) {
   const r = await db.query(q, values, tenantId);
   const result = r.rows[0];
 
-  if (result && user) {
-    await audit.saveAuditLogInternal({
-      tenant_id: tenantId, 
-      user_id: user.id, 
-      user_name: user.name,
-      module: 'INVENTARIO', 
-      action: 'UPDATE_SUPPLY',
-      description: `Insumo #${result.supply_number || id} actualizado: ${nombre}`
-    });
+  if (result) {
+    // 1. Registro en auditoría para el historial de Kont
+    if (user) {
+      await audit.saveAuditLogInternal({
+        tenant_id: tenantId, 
+        user_id: user.id, 
+        user_name: user.name,
+        module: 'INVENTARIO', 
+        action: 'UPDATE_SUPPLY',
+        description: `Insumo #${result.supply_number || id} actualizado: ${nombre}`
+      });
+    }
+
+    // 2. LÓGICA DE ALERTA DE STOCK (Corregida para tu prima)
+    const currentStock = Number(result.stock);
+    const criticalLevel = Number(result.min_stock);
+
+    // Usamos <= para que si tiene 1 y el mínimo es 1, SÍ dispare la alerta.
+    if (currentStock <= criticalLevel) { 
+      
+      // Asegúrate de que alertController esté requerido al inicio del archivo:
+      // const alertController = require("../controllers/alert.controller");
+      
+      await alertController.createAlertInternal({
+          tenant_id: tenantId,
+          tipo: 'STOCK_INSUMO',
+          titulo: '⚠️ Stock Crítico',
+          mensaje: `El insumo "${result.nombre}" llegó al nivel mínimo (${currentStock} ${result.unidad} restantes).`,
+          referencia_id: result.id,
+          prioridad: 'ALTA'
+      });
+    }
   }
   
   return result || null;
 }
+
 
 /**
  * ELIMINAR
