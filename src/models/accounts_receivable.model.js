@@ -1,4 +1,5 @@
-// backend/models/finance_ar.model.js
+// src/models/accounts_receivable.model.js
+// BUG NUEVO FIX: status era 'CONFIRMADA' pero el sistema guarda 'CONFIRMADO'
 const db = require("../db");
 
 async function listARSummary(tenantId) {
@@ -7,8 +8,8 @@ async function listARSummary(tenantId) {
       SELECT o.id, o.customer_id, COALESCE(SUM(oi.total), 0) AS total
       FROM orders o
       LEFT JOIN order_items oi ON oi.order_id = o.id
-      WHERE COALESCE(o.status, 'BORRADOR') = 'CONFIRMADA'
-      AND o.tenant_id = $1 AND oi.tenant_id = $1
+      WHERE o.status = 'CONFIRMADO'
+        AND o.tenant_id = $1
       GROUP BY o.id
     ),
     order_paid AS (
@@ -18,23 +19,25 @@ async function listARSummary(tenantId) {
       GROUP BY cp.order_id
     ),
     per_order AS (
-      SELECT ot.id, ot.customer_id, ot.total, COALESCE(op.paid, 0) AS paid,
+      SELECT ot.id, ot.customer_id, ot.total,
+             COALESCE(op.paid, 0) AS paid,
              GREATEST(ot.total - COALESCE(op.paid, 0), 0) AS pending
       FROM order_totals ot
       LEFT JOIN order_paid op ON op.order_id = ot.id
     )
     SELECT
-      c.id AS customer_id, c.name AS customer_name,
+      c.id AS customer_id,
+      c.name AS customer_name,
       COALESCE(SUM(po.total), 0) AS total_vendido,
       COALESCE(SUM(po.paid), 0) AS total_pagado,
       COALESCE(SUM(po.pending), 0) AS saldo,
       COALESCE(SUM(CASE WHEN po.pending > 0 THEN 1 ELSE 0 END), 0) AS pedidos_abiertos
     FROM customers c
     LEFT JOIN per_order po ON po.customer_id = c.id
-    WHERE COALESCE(c.terms, 'CONTADO') = 'CREDITO' AND c.tenant_id = $1
+    WHERE c.tenant_id = $1
     GROUP BY c.id, c.name
     HAVING COALESCE(SUM(po.total), 0) > 0
-    ORDER BY saldo DESC, c.name ASC;
+    ORDER BY saldo DESC, c.name ASC
   `;
   const r = await db.query(q, [tenantId], tenantId);
   return r.rows;
