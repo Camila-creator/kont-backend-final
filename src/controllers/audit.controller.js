@@ -25,7 +25,7 @@ exports.getAuditLogs = async (req, res) => {
             `;
         } 
         // CASO B: Admin de Empresa - Ve SOLO lo de su tenant_id
-        else if (role === "ADMIN_BRAND") {
+        else if (role === "ADMIN") {
             query = `
                 SELECT 
                     a.id, a.created_at, a.user_name, a.action, a.module, a.description, a.ip_address,
