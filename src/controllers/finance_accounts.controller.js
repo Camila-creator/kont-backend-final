@@ -1,5 +1,8 @@
 const accounts = require("../models/finance_accounts.model");
 
+// Constante para verificar el entorno
+const IS_PROD = process.env.NODE_ENV === 'production';
+
 const getTenant = (req) => req.user.tenant_id || req.user.tenantId;
 
 exports.list = async (req, res) => { 
@@ -7,7 +10,8 @@ exports.list = async (req, res) => {
         const data = await accounts.listAccounts(getTenant(req));
         res.json(data);
     } catch (e) {
-        res.status(500).json({ error: "Error al listar cuentas" });
+        console.error("Error en listAccounts:", e);
+        res.status(500).json({ error: IS_PROD ? "Error interno al listar cuentas." : e.message });
     }
 };
 
@@ -22,6 +26,8 @@ exports.create = async (req, res) => {
         const nuevo = await accounts.createAccount(b, req.user);
         res.status(201).json(nuevo); 
     } catch (e) { 
+        console.error("Error en createAccount:", e);
+        // Los errores 400 se mantienen porque son validaciones de negocio
         res.status(400).json({ error: e.message || "No se pudo crear" }); 
     }
 };
@@ -40,7 +46,8 @@ exports.update = async (req, res) => {
         if (!updated) return res.status(404).json({ error: "Cuenta no encontrada" }); 
         res.json(updated);
     } catch (e) {
-        res.status(500).json({ error: "Error al actualizar" });
+        console.error("Error en updateAccount:", e);
+        res.status(500).json({ error: IS_PROD ? "Error interno al actualizar la cuenta." : e.message });
     }
 };
 
@@ -55,6 +62,7 @@ exports.remove = async (req, res) => {
         if (!out) return res.status(404).json({ error: "No encontrada" }); 
         res.json({ ok: true });
     } catch (e) {
-        res.status(500).json({ error: "Error al eliminar" });
+        console.error("Error en deleteAccount:", e);
+        res.status(500).json({ error: IS_PROD ? "Error interno al eliminar la cuenta." : e.message });
     }
 };
