@@ -53,6 +53,9 @@ const cxcRoutes = require("./cxc.routes");
 
 const financeRoutes = require("./finance.routes");
 
+// RUTAS DE SUCURSALES
+const branchesRoutes = require("./branches.routes");
+
 // 🔔 MONTAJE DE ALERTAS
 router.use("/alerts", alertRoutes);
 // Ruta de Egresos (Gastos Fijos y Esporádicos)
@@ -150,6 +153,9 @@ router.use("/sa-dashboard", saDashboardRoutes);
 // RUTAS DE SERIALES (IMEIS) 
 router.use("/serials", serialRoutes);
 router.use("/received-phones", receivedPhonesRoutes);
+
+// RUTAS DE SUCURSALES 
+router.use("/branches", branchesRoutes);
 
 // RUTAS DE KONT INTELLIGENCE
 router.use("/intelligence", intelligenceRoutes);
