@@ -25,7 +25,7 @@ exports.getUsers = async (req, res) => {
   }
 };
 
-// Crear un usuario nuevo
+// Crear un nuevo usuario
 exports.createUser = async (req, res) => {
   try {
     const tenantId = getTenant(req);
@@ -35,14 +35,34 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ error: "Faltan datos obligatorios" });
     }
 
+    // --- 🛡️ VALIDACIÓN DE LÍMITE DE PLAN ---
+    const planCheck = await db.query(
+      `SELECT p.max_users, 
+              (SELECT COUNT(*) FROM users WHERE tenant_id = $1) as current_users
+       FROM tenants t
+       JOIN plans p ON t.plan_id = p.id
+       WHERE t.id = $1`,
+      [tenantId]
+    );
+
+    const { max_users, current_users } = planCheck.rows[0];
+
+    // Si max_users es 0 o null, podrías considerarlo ilimitado, 
+    // pero aquí asumimos que siempre hay un número.
+    if (current_users >= max_users) {
+      return res.status(403).json({ 
+        error: `Has alcanzado el límite de tu plan (${max_users} usuarios). Por favor, mejora tu plan.` 
+      });
+    }
+    // --- FIN VALIDACIÓN ---
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const result = await db.query(
       `INSERT INTO users 
        (tenant_id, name, email, password_hash, role, custom_title, is_coordinator) 
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [tenantId, name, email, passwordHash, role, custom_title, is_coordinator || false],
-      tenantId
+      [tenantId, name, email, passwordHash, role, custom_title, is_coordinator || false]
     );
 
     res.status(201).json({ message: "Usuario creado", id: result.rows[0].id });
