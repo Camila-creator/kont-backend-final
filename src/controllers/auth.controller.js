@@ -1,4 +1,3 @@
-// backend/controllers/auth.controller.js
 const { pool } = require("../db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -13,7 +12,7 @@ exports.login = async (req, res) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // 1. BUSCAR USUARIO — usamos pool directo (sin RLS) para que el login siempre funcione
+    // 1. BUSCAR USUARIO
     const userResult = await pool.query(
       `SELECT u.*, t.category_id, t.is_active AS tenant_active
        FROM users u
@@ -38,35 +37,46 @@ exports.login = async (req, res) => {
       return res.status(403).json({ error: "Tu usuario está desactivado. Contacta al administrador." });
     }
 
-    // 4. VALIDAR CONTRASEÑA con bcrypt — sin excepciones ni bypass
+    // 4. VALIDAR CONTRASEÑA
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
-    // 5. GENERAR TOKEN — JWT_SECRET debe existir en .env, sin fallback inseguro
+    // 5. GENERAR TOKENS (Access y Refresh)
     const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      console.error("CRÍTICO: JWT_SECRET no está definido en las variables de entorno.");
+    const refreshSecret = process.env.JWT_REFRESH_SECRET; // Asegúrate de tener esto en tu .env
+
+    if (!secret || !refreshSecret) {
+      console.error("CRÍTICO: Secretos de JWT no definidos en .env");
       return res.status(500).json({ error: "Error de configuración del servidor." });
     }
 
+    // Access Token (24h)
     const token = jwt.sign(
-  {
-    id: user.id,          // Cambia userId por id para ser consistente
-    tenantId: user.tenant_id,
-    role: user.role,      // <--- ESTE ES EL REY
-    name: user.name,
-    categoryId: user.category_id || 1,
-  },
-  secret,
-  { expiresIn: "24h" }
-);
+      {
+        id: user.id,
+        tenantId: user.tenant_id,
+        role: user.role,
+        name: user.name,
+        categoryId: user.category_id || 1,
+      },
+      secret,
+      { expiresIn: "24h" }
+    );
 
-    // 6. RESPUESTA
+    // Refresh Token (7 días) - ESTA ES LA MODIFICACIÓN
+    const refreshToken = jwt.sign(
+      { id: user.id },
+      refreshSecret,
+      { expiresIn: "7d" }
+    );
+
+    // 6. RESPUESTA (Enviando ambos tokens)
     return res.json({
       message: "Login exitoso",
       token,
+      refreshToken, // Lo añadimos aquí
       user: {
         id: user.id,
         name: user.name,
@@ -80,5 +90,51 @@ exports.login = async (req, res) => {
   } catch (error) {
     console.error("Error en login:", error.message);
     return res.status(500).json({ error: "Error interno del servidor" });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({ error: "Refresh token requerido" });
+    }
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    
+    const decoded = jwt.verify(refreshToken, refreshSecret);
+
+    const userResult = await pool.query(
+      `SELECT u.id, u.tenant_id, u.role, u.name, t.category_id 
+       FROM users u 
+       JOIN tenants t ON t.id = u.tenant_id
+       WHERE u.id = $1 AND u.is_active = true AND t.is_active = true`,
+      [decoded.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(403).json({ error: "Usuario no autorizado o inactivo" });
+    }
+
+    const user = userResult.rows[0];
+
+    const newToken = jwt.sign(
+      {
+        id: user.id,
+        tenantId: user.tenant_id,
+        role: user.role,
+        name: user.name,
+        categoryId: user.category_id || 1,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    return res.json({ token: newToken });
+
+  } catch (error) {
+    console.error("Error en refresh token:", error.message);
+    return res.status(403).json({ error: "Sesión expirada. Por favor, inicia sesión de nuevo." });
   }
 };
