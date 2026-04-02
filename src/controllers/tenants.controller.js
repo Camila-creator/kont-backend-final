@@ -96,15 +96,14 @@ exports.createTenant = async (req, res) => {
     client.release();
   }
 };
-
 exports.updateTenant = async (req, res) => {
   try {
     if (req.user.role !== "SUPER_ADMIN") return res.status(403).json({ error: "Acceso denegado." });
     
-    // ✅ NUEVO: Se recibe logo_url en la destructuración
+    // ✅ CORRECCIÓN: Agregamos logo_url a la destructuración
     const { name, rif, address, phone, instagram, category_id, plan_id, plan_type, logo_url } = req.body;
     
-    // ✅ NUEVO: Se actualiza logo_url ($9)
+    // ✅ CORRECCIÓN: Agregamos logo_url ($9) al SET y lo pasamos en el array
     await db.pool.query(
         `UPDATE tenants 
          SET name = $1, rif = $2, address = $3, phone = $4, instagram = $5, category_id = $6, plan_id = $7, plan_type = $8, logo_url = $9 
