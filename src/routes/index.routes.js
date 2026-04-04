@@ -83,6 +83,10 @@ const serialRoutes = require("./serial_routes");
 // RUTA: Equipos recibidos como pago (El "limbo")
 const receivedPhonesRoutes = require("./received-phones.routes"); 
 
+// RUTAS DE NOMINA Y CONCILIACION 
+const payrollRoutes        = require("./payroll.routes");
+const reconciliationRoutes = require("./reconciliation.routes");
+
 
 router.use("/", healthRoutes);
 
@@ -159,5 +163,9 @@ router.use("/branches", branchesRoutes);
 
 // RUTAS DE KONT INTELLIGENCE
 router.use("/intelligence", intelligenceRoutes);
+
+// RUTAS DE NOMINA Y CONCILIACION
+router.use("/payroll",          payrollRoutes);
+router.use("/reconciliations",  reconciliationRoutes);
 
 module.exports = router;

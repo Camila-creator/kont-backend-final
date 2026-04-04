@@ -53,6 +53,8 @@ const MODULE_ACCESS = {
   cxc:                    FINANCE_ROLES,
   customer_payments:      FINANCE_ROLES,
   supplier_payments:      FINANCE_ROLES,
+  payroll:                FINANCE_ROLES,
+  reconciliation:         FINANCE_ROLES,
 
   // ── Marketing ───────────────────────────────────────────
   marketing:              MKT_ROLES,
