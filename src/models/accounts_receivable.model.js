@@ -1,5 +1,4 @@
 // src/models/accounts_receivable.model.js
-// BUG NUEVO FIX: status era 'CONFIRMADA' pero el sistema guarda 'CONFIRMADO'
 const db = require("../db");
 
 async function listARSummary(tenantId) {
