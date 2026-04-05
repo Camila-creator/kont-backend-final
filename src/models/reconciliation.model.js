@@ -359,8 +359,27 @@ async function getAvailablePayments(reconciliationId, tenantId) {
   };
 }
 
-module.exports = {
-  listReconciliations, getReconciliationById, createReconciliation,
-  importStatementLines, runAutoMatch, matchLineManual, ignoreLine,
-  closeReconciliation, getAvailablePayments,
-};
+
+async function revertLine(lineId, tenantId) {
+  const r = await db.query(
+    `UPDATE bank_statement_lines
+     SET match_status        = 'PENDIENTE',
+         matched_payment_id  = NULL,
+         matched_payment_type= NULL,
+         match_confidence    = 0,
+         matched_by_user     = NULL,
+         matched_at          = NULL,
+         manual_note         = NULL
+     WHERE id = $1 AND tenant_id = $2
+     RETURNING *`,
+    [lineId, tenantId], tenantId
+  );
+  if (!r.rows[0]) throw new Error("Línea no encontrada.");
+  return r.rows[0];
+}
+
+ module.exports = {
+   listReconciliations, getReconciliationById, createReconciliation,
+   importStatementLines, runAutoMatch, matchLineManual, ignoreLine,
+   closeReconciliation, getAvailablePayments, revertLine,
+ };

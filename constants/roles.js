@@ -41,6 +41,7 @@ const MODULE_ACCESS = {
   suppliers:              OPS,
   customers:              OPS,
   invoices:               OPS,
+  credit_notes:           OPS,
 
   // ── Finanzas ────────────────────────────────────────────
   finance:                FINANCE_ROLES,

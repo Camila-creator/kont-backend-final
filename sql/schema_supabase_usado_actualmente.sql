@@ -1255,3 +1255,78 @@ SELECT table_name FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name IN ('employees','payroll_periods','payroll_items',
                      'bank_reconciliations','bank_statement_lines');
+
+
+-- =====================================================================
+-- KONT — Devoluciones / Notas de Crédito + Fix conciliación
+-- Ejecutar en Supabase SQL Editor
+-- =====================================================================
+
+-- ─────────────────────────────────────────────────────────────────────
+-- TABLA DE DEVOLUCIONES
+-- ─────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS credit_notes (
+  id              SERIAL PRIMARY KEY,
+  tenant_id       INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  order_id        BIGINT NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+  customer_id     BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  note_number     VARCHAR(30),                     -- NC-2026-000001
+  reason          TEXT NOT NULL,                   -- Motivo de la devolución
+  type            VARCHAR(20) DEFAULT 'TOTAL',     -- TOTAL | PARCIAL
+  status          VARCHAR(20) DEFAULT 'EMITIDA',   -- EMITIDA | APLICADA | ANULADA
+  subtotal        NUMERIC(12,2) DEFAULT 0,
+  total           NUMERIC(12,2) DEFAULT 0,
+  inventory_reversed BOOLEAN DEFAULT false,        -- ¿ya se revirtió el stock?
+  -- Snapshots del cliente y empresa al momento de emisión
+  customer_name_snapshot VARCHAR(255),
+  tenant_name_snapshot   VARCHAR(255),
+  notes           TEXT,
+  created_by      INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Items devueltos de la nota de crédito
+CREATE TABLE IF NOT EXISTS credit_note_items (
+  id              SERIAL PRIMARY KEY,
+  tenant_id       INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  credit_note_id  INT NOT NULL REFERENCES credit_notes(id) ON DELETE CASCADE,
+  order_item_id   BIGINT REFERENCES order_items(id) ON DELETE SET NULL,
+  product_id      BIGINT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  product_name_snapshot VARCHAR(255),
+  qty             NUMERIC(12,3) NOT NULL,
+  unit_price      NUMERIC(12,2) NOT NULL,
+  total           NUMERIC(12,2) NOT NULL
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_credit_notes_tenant  ON credit_notes(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_order   ON credit_notes(order_id);
+CREATE INDEX IF NOT EXISTS idx_cn_items_note        ON credit_note_items(credit_note_id, tenant_id);
+
+-- RLS
+ALTER TABLE credit_notes       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_note_items  ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON credit_notes;
+DROP POLICY IF EXISTS tenant_isolation_policy ON credit_note_items;
+
+CREATE POLICY tenant_isolation_policy ON credit_notes
+  USING (tenant_id = NULLIF(current_setting('app.current_tenant_id',TRUE),'')::INT)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id',TRUE),'')::INT);
+
+CREATE POLICY tenant_isolation_policy ON credit_note_items
+  USING (tenant_id = NULLIF(current_setting('app.current_tenant_id',TRUE),'')::INT)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id',TRUE),'')::INT);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- FIX CONCILIACIÓN: endpoint revert (reversar match a PENDIENTE)
+-- (Solo SQL de soporte — la lógica está en el model)
+-- ─────────────────────────────────────────────────────────────────────
+-- Agregar índice para acelerar reversos frecuentes
+CREATE INDEX IF NOT EXISTS idx_stmt_lines_status
+  ON bank_statement_lines(reconciliation_id, match_status);
+
+-- Verificación
+SELECT table_name FROM information_schema.tables
+WHERE table_schema='public'
+  AND table_name IN ('credit_notes','credit_note_items');

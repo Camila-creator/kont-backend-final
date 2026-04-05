@@ -32,3 +32,9 @@ exports.ignoreLine  = async (req, res) => { try { res.json({ ok: true, data: awa
 exports.close       = async (req, res) => { try { res.json({ ok: true, data: await model.closeReconciliation(req.params.id, req.body.closing_balance, getTid(req), req.user) }); } catch (e) { handle(e, res); }};
 
 exports.getPayments = async (req, res) => { try { res.json({ ok: true, data: await model.getAvailablePayments(req.params.id, getTid(req)) }); } catch (e) { handle(e, res); }};
+
+ exports.revertLine = async (req, res) => {
+  try {
+     res.json({ ok: true, data: await model.revertLine(req.params.lineId, getTid(req)) });
+   } catch (e) { handle(e, res); }
+ };

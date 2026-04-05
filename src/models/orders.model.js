@@ -4,9 +4,7 @@ const audit = require("../controllers/audit.controller");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-// ─────────────────────────────────────────────────────────
-// BUG 3 FIX: columna correcta es category_id (no business_category_id)
-// ─────────────────────────────────────────────────────────
+
 async function getTenantConfig(tenantId) {
   try {
     const r = await db.query(
@@ -307,3 +305,4 @@ async function addPaymentToOrder(data, tenantId) {
 }
 
 module.exports = { listOrders, getOrderFullById, createOrder, updateOrder, addPaymentToOrder };
+

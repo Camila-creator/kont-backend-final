@@ -13,5 +13,6 @@ router.put("/:id/lines/:lineId/match",      ...auth, ctrl.matchManual);
 router.put("/:id/lines/:lineId/ignore",     ...auth, ctrl.ignoreLine);
 router.post("/:id/close",                   ...auth, ctrl.close);
 router.get("/:id/available-payments",       ...auth, ctrl.getPayments);
+router.put("/:id/lines/:lineId/revert",     ...auth, ctrl.revertLine);
 
 module.exports = router;

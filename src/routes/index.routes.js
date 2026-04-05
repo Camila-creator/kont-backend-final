@@ -87,6 +87,9 @@ const receivedPhonesRoutes = require("./received-phones.routes");
 const payrollRoutes        = require("./payroll.routes");
 const reconciliationRoutes = require("./reconciliation.routes");
 
+// RUTAS DE NOTAS DE CREDITO
+const creditNotesRoutes = require("./credit_notes.routes");
+
 
 router.use("/", healthRoutes);
 
@@ -167,5 +170,9 @@ router.use("/intelligence", intelligenceRoutes);
 // RUTAS DE NOMINA Y CONCILIACION
 router.use("/payroll",          payrollRoutes);
 router.use("/reconciliations",  reconciliationRoutes);
+
+
+// RUTAS DE NOTAS DE CREDITO 
+router.use("/credit-notes", creditNotesRoutes);
 
 module.exports = router;
